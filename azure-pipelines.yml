@@ -1,0 +1,79 @@
+variables:
+  url: 'https://pixelrobots.co.uk'
+
+  # Agent VM image name
+  vmImageName: 'ubuntu-latest'
+
+stages:
+- stage: Scan
+  displayName: Scan stage
+  jobs:
+  - job: Run_Owasp_Zap_UI_Baseline_Scan
+    pool:
+      vmImage: $(vmImageName)
+    steps:
+    - task: CmdLine@2
+      displayName: "Set chmod permissions and download files to ArtifactStagingDirectory"
+      inputs:
+         script: |
+          chmod 777 -R $(Build.ArtifactStagingDirectory)
+          wget  -O $(Build.ArtifactStagingDirectory)/ZapTransform.ps1 "https://raw.githubusercontent.com/UKHO/owasp-zap-scan/master/src/ZapTransform.ps1"
+          wget  -O $(Build.ArtifactStagingDirectory)/ZapTransformTemplate.xslt "https://raw.githubusercontent.com/UKHO/owasp-zap-scan/master/src/ZapTransformTemplate.xslt"
+    - task: CmdLine@2
+      displayName: "Run OWASP ZAP UI Baseline Scan"
+      inputs:
+        script: |
+          docker run --rm --mount type=bind,source=$(Build.ArtifactStagingDirectory),target=/zap/wrk/ -t owasp/zap2docker-stable zap-baseline.py -t $(url) -g gen.conf -r OWASP-Zap-Report.html -x Report.xml || true
+      continueOnError: true
+    - task: CmdLine@2
+      displayName: "Transform Results"
+      inputs:
+       script: | 
+        docker run --rm --mount type=bind,source=$(Build.ArtifactStagingDirectory),target=/tmp/nunit/ --mount type=bind,source=$(Build.ArtifactStagingDirectory),target=/tmp/report/ mcr.microsoft.com/powershell:ubuntu-18.04 pwsh -File '/tmp/nunit/ZapTransform.ps1'
+    - task: PublishTestResults@2
+      displayName: "Publish OWASP ZAP UI Test Report"
+      inputs:
+        testResultsFormat: 'NUnit'
+        testResultsFiles: 'Converted-OWASP-ZAP-Report.xml'
+        searchFolder: '$(Build.ArtifactStagingDirectory)'
+    - task: PublishBuildArtifacts@1
+      displayName: "Publish OWASP ZAP UI HTML Report"
+      inputs:
+        PathtoPublish: '$(Build.ArtifactStagingDirectory)/OWASP-Zap-Report.html'
+        ArtifactName: 'Owasp Zap HTML Report'
+        publishLocation: 'Container'
+    - task: PowerShell@2
+      displayName: "Email OWASP ZAP UI HTML Report"
+      env: 
+        SMTPPWD : $(smtppwd) 
+      inputs:
+        targetType: 'inline'
+        script: |
+            # Sender and Recipient Info
+            $MailFrom = "noreply@pixelrobots.co.uk"
+            $MailTo = "richard.hooper@pixelrobots.co.uk"
+
+            # Sender Credentials
+            $Username = "noreply@pixelrobots.co.uk"
+            $Password = ConvertTo-SecureString $env:SMTPPWD -AsPlainText -Force
+
+            # Server Info
+            $SmtpServer = "smtp.office365.com"
+            $SmtpPort = "587"
+
+            # Message stuff
+            $MessageSubject = "Portal OWASP Scanning" 
+            $attachment = '$(Build.ArtifactStagingDirectory)/OWASP-Zap-Report.html'
+            $Message = New-Object System.Net.Mail.MailMessage $MailFrom,$MailTo
+            $Message.IsBodyHTML = $true
+            $Message.Subject = $MessageSubject
+            $attach = new-object Net.Mail.Attachment($attachment) 
+            $message.Attachments.Add($attach) 
+            $Message.Body = "Please find attached OWASP report."
+
+            # Construct the SMTP client object, credentials, and send
+            $Smtp = New-Object Net.Mail.SmtpClient($SmtpServer,$SmtpPort)
+            $Smtp.EnableSsl = $true
+            $Smtp.Credentials = New-Object System.Net.NetworkCredential($Username,$Password)
+            $Smtp.Send($Message)
+        errorActionPreference: 'continue'
