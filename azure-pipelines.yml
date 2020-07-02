@@ -17,8 +17,8 @@ stages:
       inputs:
          script: |
           chmod 777 -R $(Build.ArtifactStagingDirectory)
-          wget  -O $(Build.ArtifactStagingDirectory)/ZapTransform.ps1 "https://raw.githubusercontent.com/UKHO/owasp-zap-scan/master/src/ZapTransform.ps1"
-          wget  -O $(Build.ArtifactStagingDirectory)/ZapTransformTemplate.xslt "https://raw.githubusercontent.com/UKHO/owasp-zap-scan/master/src/ZapTransformTemplate.xslt"
+          wget  -O $(Build.ArtifactStagingDirectory)/ZapTransform.ps1 "https://raw.githubusercontent.com/PixelRobots/Azure-DevOps-OWASP-ZAP-Scan/master/ZapTransform.ps1"
+          wget  -O $(Build.ArtifactStagingDirectory)/ZapTransformTemplate.xslt "https://raw.githubusercontent.com/PixelRobots/Azure-DevOps-OWASP-ZAP-Scan/master/ZapTransformTemplate.xslt"
     - task: CmdLine@2
       displayName: "Run OWASP ZAP UI Baseline Scan"
       inputs:
